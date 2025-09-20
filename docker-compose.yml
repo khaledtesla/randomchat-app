@@ -1,0 +1,92 @@
+# Docker Compose for RandomChat WebRTC Application
+version: '3.8'
+
+services:
+  randomchat:
+    build: .
+    container_name: randomchat-webrtc
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - HOST=0.0.0.0
+    env_file:
+      - .env
+    volumes:
+      - ./logs:/app/logs
+      - /etc/localtime:/etc/localtime:ro
+    restart: unless-stopped
+    networks:
+      - randomchat-network
+    healthcheck:
+      test: ["CMD", "node", "scripts/health-check.js"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+
+  # Optional: Redis for session storage and caching
+  redis:
+    image: redis:7-alpine
+    container_name: randomchat-redis
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis-data:/data
+    networks:
+      - randomchat-network
+    restart: unless-stopped
+    profiles:
+      - with-redis
+
+  # Optional: MongoDB for persistent logging
+  mongodb:
+    image: mongo:6-focal
+    container_name: randomchat-mongodb
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGODB_PASSWORD:-randomchat123}
+      MONGO_INITDB_DATABASE: randomchat
+    volumes:
+      - mongodb-data:/data/db
+      - ./scripts/mongo-init.js:/docker-entrypoint-initdb.d/mongo-init.js:ro
+    networks:
+      - randomchat-network
+    restart: unless-stopped
+    profiles:
+      - with-mongodb
+
+  # Nginx reverse proxy with SSL termination
+  nginx:
+    image: nginx:alpine
+    container_name: randomchat-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+      - /var/log/nginx:/var/log/nginx
+    depends_on:
+      - randomchat
+    networks:
+      - randomchat-network
+    restart: unless-stopped
+    profiles:
+      - with-nginx
+
+networks:
+  randomchat-network:
+    driver: bridge
+
+volumes:
+  redis-data:
+  mongodb-data:
