@@ -218,9 +218,27 @@ class RandomChatServer {
                 googleAnalyticsId: config.GOOGLE_ANALYTICS_ID,
                 adsenseClientId: config.GOOGLE_ADSENSE_CLIENT_ID,
                 maxMessageLength: config.MAX_MESSAGE_LENGTH,
-                environment: config.NODE_ENV
+                environment: config.NODE_ENV,
+                webrtcConfig: config.getWebRTCConfig()
             });
         });
+
+        // Debug endpoint for development
+        if (!config.isProduction()) {
+            this.app.get('/api/debug', (req, res) => {
+                res.json({
+                    onlineUsers: this.userManager.getOnlineCount(),
+                    usersList: Array.from(this.userManager.users.values()).map(u => ({
+                        id: u.id,
+                        profile: u.profile,
+                        connectionTime: u.connectionTime
+                    })),
+                    queueStats: this.matchingEngine.getQueueStats(),
+                    activeChats: this.chatManager.getActiveChatCount(),
+                    environment: config.NODE_ENV
+                });
+            });
+        }
 
         // Input validation middleware
         this.app.use('/api', (req, res, next) => {
@@ -343,14 +361,19 @@ class RandomChatServer {
                 return;
             }
 
+            this.logger.info(`User ${user.id} looking for match with preferences:`, preferences);
             socket.emit('match-searching', { message: 'Searching for a match...' });
 
             // Add user to matching queue
             const match = await this.matchingEngine.findMatch(user, preferences);
+            
+            // Debug logging
+            const queueStats = this.matchingEngine.getQueueStats();
+            this.logger.info(`Queue stats:`, queueStats);
 
             if (match) {
                 // Create chat room
-                const chatRoom = this.chatManager.createChat(user.id, match.id);
+                const chatRoom = this.chatManager.createChat(user.id, match.id, preferences.chatType);
                 
                 // Join both users to the chat room
                 const userSocket = this.io.sockets.sockets.get(user.socketId);
@@ -389,10 +412,14 @@ class RandomChatServer {
                 }
             } else {
                 // No immediate match found, user added to queue
+                const queuePosition = this.matchingEngine.getQueuePosition(user.id);
                 socket.emit('match-queued', { 
-                    message: 'Looking for someone to chat with...',
-                    position: this.matchingEngine.getQueuePosition(user.id)
+                    message: `Looking for someone to chat with... (Position: ${queuePosition}, Online: ${this.userManager.getOnlineCount()})`,
+                    position: queuePosition,
+                    onlineUsers: this.userManager.getOnlineCount()
                 });
+                
+                this.logger.info(`User ${user.id} added to queue. Position: ${queuePosition}, Online users: ${this.userManager.getOnlineCount()}`);
             }
         } catch (error) {
             this.logger.error('Match finding failed:', error);

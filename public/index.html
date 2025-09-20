@@ -288,6 +288,16 @@
                 }
                 
                 this.showLoadingIndicator('Looking for a match...');
+                
+                // Add debug info for development
+                if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+                    setTimeout(() => {
+                        if (document.getElementById('loadingIndicator').style.display !== 'none') {
+                            this.showTestModeOptions();
+                        }
+                    }, 5000); // Show test options after 5 seconds
+                }
+                
                 this.socket.emit('find-match', { ...this.getProfileData(), chatType: this.chatType });
             }
 
@@ -487,6 +497,69 @@
                 }
             }
 
+            showTestModeOptions() {
+                const indicator = document.getElementById('loadingIndicator');
+                if (indicator) {
+                    indicator.innerHTML = `
+                        <div class="spinner"></div>
+                        <p>No other users online for matching</p>
+                        <div style="margin-top: 20px;">
+                            <p style="color: #666; font-size: 14px;">Test Mode Options:</p>
+                            <button onclick="randomChatApp.simulateMatch()" style="margin: 5px; padding: 10px 15px; background: #667eea; color: white; border: none; border-radius: 5px; cursor: pointer;">Simulate Match (Demo)</button>
+                            <button onclick="randomChatApp.returnToSetup()" style="margin: 5px; padding: 10px 15px; background: #dc3545; color: white; border: none; border-radius: 5px; cursor: pointer;">Back to Setup</button>
+                        </div>
+                        <p style="color: #999; font-size: 12px; margin-top: 15px;">💡 Tip: Open another browser tab to test with multiple users</p>
+                    `;
+                }
+            }
+
+            simulateMatch() {
+                // Simulate a match for testing purposes
+                this.hideLoadingIndicator();
+                this.chatId = 'demo-chat-' + Date.now();
+                this.strangerId = 'demo-user';
+
+                document.getElementById('strangerStatus').textContent = 'Connected to Demo Bot';
+                document.getElementById('chatInput').disabled = false;
+                document.getElementById('sendBtn').disabled = false;
+                
+                // Add demo system message
+                this.displayMessage('🤖 Demo Mode: You are connected to a demo bot. This is for testing the interface.', 'system');
+                
+                // Simulate bot responses
+                this.startDemoBot();
+                
+                this.showNotification('Demo mode activated! Try sending a message.', 'info');
+            }
+
+            startDemoBot() {
+                const botResponses = [
+                    'Hello! I\'m a demo bot. How are you?',
+                    'This is a test of the chat functionality.',
+                    'The real app will connect you with other users.',
+                    'Try the video chat feature too!',
+                    'You can end this chat anytime.',
+                    'Thanks for testing the app! 😊'
+                ];
+                
+                let responseIndex = 0;
+                
+                // Store original sendMessage to intercept user messages
+                const originalSendMessage = this.sendMessage.bind(this);
+                this.sendMessage = () => {
+                    originalSendMessage();
+                    
+                    // Bot responds after user message
+                    setTimeout(() => {
+                        if (this.chatId && this.chatId.startsWith('demo-chat')) {
+                            const response = botResponses[responseIndex % botResponses.length];
+                            this.displayMessage(response, 'other');
+                            responseIndex++;
+                        }
+                    }, 1000 + Math.random() * 2000); // Random delay 1-3 seconds
+                };
+            }
+
             hideLoadingIndicator() {
                 const indicator = document.getElementById('loadingIndicator');
                 if (indicator) indicator.style.display = 'none';
@@ -506,13 +579,20 @@
         }
 
         document.addEventListener('DOMContentLoaded', () => {
-            new RandomChatApp();
+            window.randomChatApp = new RandomChatApp();
             
             // Initialize ads
             initializeAds();
             
             // Initialize Google Analytics with dynamic ID
             initializeAnalytics();
+            
+            // Add debug info in development
+            if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+                console.log('🚀 RandomChat WebRTC App - Development Mode');
+                console.log('📊 For testing with multiple users, open multiple browser tabs/windows');
+                console.log('🔧 Check the Network tab in DevTools to see WebSocket connections');
+            }
         });
         
         // Ad initialization function
